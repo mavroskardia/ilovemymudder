@@ -107,7 +107,6 @@ class ServerProtocol(asyncio.Protocol):
         print('testing commands')
         msg = 'testing commands, you passed these arguments: %s' % repr(args)
         self.transport.write(msg.encode())
-        yield from self.transport.drain()
         return True, 'test complete'
 
     def close(self):
@@ -130,7 +129,11 @@ class Server(object):
         return True, 'quitting...'
 
     def say(self, *args):
-        return True, 'sending "%s" out to all clients' % ' '.join(args)
+        msg = ' '.join(args) + '\n'
+        for c in self.connections:
+            c.transport.write(msg.encode())            
+
+        return True, 'sent %s to all connections' % msg
 
     def run(self):
         self.loop = asyncio.get_event_loop()
