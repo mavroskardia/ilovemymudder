@@ -1,6 +1,7 @@
 import time
 import asyncio
 import getpass
+import threading
 
 from enum import Enum
 
@@ -27,16 +28,14 @@ class ClientProtocol(asyncio.Protocol):
         self.passwd = passwd  # should probably send over SSL if I keep going
         self.client = client
         self.state = ClientState.Initial
+
         self.client_actions = {
             ClientState.Handshake: self.receive_handshake,
             ClientState.Authentication: self.receive_auth,
             ClientState.Command: self.receive_command_result,
         }
-        self.commands = {
-            'echo': lambda *args: self.send('echo ' + (' '.join(args))),
-            'quit': lambda: self.send('quit'),
-            'say': lambda *args: self.send('say ' + (' '.join(args))),
-        }
+
+        self.interpreter = Interpreter(self)
 
     def connection_made(self, transport):
         self.transport = transport
@@ -47,10 +46,9 @@ class ClientProtocol(asyncio.Protocol):
 
     def connection_lost(self, exc):
         print('connection lost')
+        self.interpreter_done = True
+        self.interpreter.stop()
         self.client.loop.stop()
-
-    def send(self, msg):
-        self.transport.write(msg.encode())
 
     def send_handshake(self):
         self.transport.write(config.version.encode())
@@ -74,30 +72,56 @@ class ClientProtocol(asyncio.Protocol):
         elif msg == 'OK':
             print('authenticated successfully, beginning command loop')
             self.state = ClientState.Command
-            self.process_next_command()
+            self.interpreter.start()
 
-    def receive_command_result(self, data):        
+    def receive_command_result(self, data):
         print(data.decode().strip())
-        self.process_next_command()
 
     def unimplemented_action(self, data):
         print('client tried to execute an unimplemented state "{}"'.format(self.state))
 
-    def process_next_command(self):
-        valid = False
-        while not valid:
+
+class Interpreter(object):
+
+    def __init__(self, client_protocol):
+        self.protocol = client_protocol
+        self.commands = {
+            'echo': lambda *args: self.send('echo ' + (' '.join(args))),
+            'serverquit': lambda: self.send('quit'),
+            'quit': lambda: self.stop,
+            'say': lambda *args: self.send('say ' + (' '.join(args))),
+            'help': self.help
+        }
+
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self.run)
+        self.thread.start()
+
+    def stop(self):
+        self.running = False
+        self.protocol.transport.close()
+
+    def send(self, msg):
+        self.protocol.transport.write(msg.encode())
+
+    def run(self):
+        while self.running:
             cmd = input('=> ')
+            if not cmd:
+                continue
             cmd, *args = [c.strip() for c in cmd.split(' ') if c]
             valid = cmd in self.commands
             if not valid:
-                self.invalid_command()
+                print('That is not a command. Type "help" for possible commands.')
 
-        self.commands.get(cmd, self.invalid_command)(*args)
+            self.commands.get(cmd, lambda: self.help('{} is not a valid command.'.format(cmd)))(*args)
 
-    def invalid_command(self, *args):
-        print('That is not a command. Type "help" for possible commands.')
-        self.process_next_command()
-
+    def help(self, msg=None):
+        commands = '\n\t' + '\n\t'.join(self.commands.keys())
+        if msg:
+            print(msg)
+        print(commands)
 
 class Client(object):
 

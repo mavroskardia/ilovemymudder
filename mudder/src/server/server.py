@@ -64,7 +64,6 @@ class ServerProtocol(asyncio.Protocol):
 
     def authenticate(self, data):
         msg = data.decode().strip()
-        print('attempting to authenticate against {}'.format(msg))
 
         pattern = r'^(\w+):(\w+)$'
         result = re.findall(pattern, msg)
@@ -132,7 +131,7 @@ class Server(object):
         return True, 'quitting...'
 
     def say(self, *args):
-        msg = ' '.join(args) + '\n'
+        msg = '\n' + ' '.join(args) + '\n'
         for c in self.connections:
             c.transport.write(msg.encode())
 
