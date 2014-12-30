@@ -2,7 +2,10 @@ import pdb
 import re
 import sqlite3
 import asyncio
+
 from enum import Enum
+
+from .storage import is_user_match
 from ..common import config
 
 class ServerState(Enum):
@@ -27,13 +30,13 @@ class ServerProtocol(asyncio.Protocol):
         self.commands = {
             'quit': self.server.quit,
             'say': self.server.say,
-            'test': self.test,
+            'echo': self.echo,
         }
 
     def connection_made(self, transport):
         self.transport = transport
         self.server.connections.append(self)
-        print('Accepted connection from', transport.get_extra_info('peername'))
+        print('Accepted connection from {}'.format(transport.get_extra_info('peername')))
 
     def data_received(self, data):
         success, msg = self.protocol_actions.get(self.state, self.invalid_state)(data)
@@ -61,7 +64,7 @@ class ServerProtocol(asyncio.Protocol):
 
     def authenticate(self, data):
         msg = data.decode().strip()
-        print('attempting to authenticate against', msg)
+        print('attempting to authenticate against {}'.format(msg))
 
         pattern = r'^(\w+):(\w+)$'
         result = re.findall(pattern, msg)
@@ -70,19 +73,21 @@ class ServerProtocol(asyncio.Protocol):
 
         user, passwd = result[0]
 
-        print('authenticating user "%s" against password hash "%s"' % (user, passwd))
+        print('authenticating user "{}"'.format(user))
 
         if self.auth_user(user, passwd):
             self.state = ServerState.Command
+            self.transport.write('OK'.encode())
             return True, 'successfully authenticated'
 
+        self.transport.write('NO'.encode())
         return False, 'invalid user'
 
     def process_command(self, data):
         msg = data.decode().strip()
         pattern = r'\w+'
         command, *args = re.findall(pattern, msg)
-        print('attempting to process command', command, 'with args', repr(args))
+        print('attempting to process command {} with args {}'.format(command, repr(args)))
 
         cmd = self.commands.get(command.lower(), self.invalid_command)
         if not args: args = []
@@ -100,14 +105,12 @@ class ServerProtocol(asyncio.Protocol):
         return False, 'Invalid command'
 
     def auth_user(self, user, passwd):
-        # TODO: go against some alchemy
-        return user == 'admin' and passwd == 'admin'
+        return is_user_match(user, passwd)
 
-    def test(self, *args):
-        print('testing commands')
-        msg = 'testing commands, you passed these arguments: %s' % repr(args)
+    def echo(self, *args):
+        msg = ' '.join([c.strip() for c in args if c])
         self.transport.write(msg.encode())
-        return True, 'test complete'
+        return True, 'echoed "{}" to client'.format(msg)
 
     def close(self):
         self.transport.close()
@@ -131,11 +134,13 @@ class Server(object):
     def say(self, *args):
         msg = ' '.join(args) + '\n'
         for c in self.connections:
-            c.transport.write(msg.encode())            
+            c.transport.write(msg.encode())
 
         return True, 'sent %s to all connections' % msg
 
     def run(self):
+        print('Started server listening at {}:{}\n'.format(config.host, config.port))
+
         self.loop = asyncio.get_event_loop()
         self.server = self.loop.run_until_complete(self.loop.create_server(lambda: ServerProtocol(self),
                                                                         config.host, config.port))
