@@ -5,7 +5,7 @@ import asyncio
 
 from enum import Enum
 
-from .storage import is_user_match
+from .storage import is_user_match, get_user
 from ..common import config
 
 class ServerState(Enum):
@@ -20,6 +20,7 @@ class ServerProtocol(asyncio.Protocol):
         super().__init__(*args, **kwargs)
         self.server = server
         self.state = ServerState.Handshake
+        self.user = 'unknown'
 
         self.protocol_actions = {
             ServerState.Handshake: self.handshake,
@@ -29,8 +30,11 @@ class ServerProtocol(asyncio.Protocol):
 
         self.commands = {
             'quit': self.server.quit,
-            'say': self.server.say,
+            'say': lambda *args: self.server.say(self, *args),
             'echo': self.echo,
+            'disconnect': self.close,
+            'stats': lambda *args: self.server.stats(self, *args),
+            'look': lambda: self.server.look(self),
         }
 
     def connection_made(self, transport):
@@ -39,6 +43,7 @@ class ServerProtocol(asyncio.Protocol):
         print('Accepted connection from {}'.format(transport.get_extra_info('peername')))
 
     def data_received(self, data):
+
         success, msg = self.protocol_actions.get(self.state, self.invalid_state)(data)
         if not success:
             print(msg)
@@ -51,7 +56,7 @@ class ServerProtocol(asyncio.Protocol):
         print('connection closed')
 
     def handshake(self, data):
-        msg = data.decode().strip()
+        msg = data.decode()
         print('received "%s" as handshake (expecting "%s")' % (msg, config.version))
         if msg == config.version:
             self.transport.write(config.version.encode())
@@ -77,6 +82,7 @@ class ServerProtocol(asyncio.Protocol):
         if self.auth_user(user, passwd):
             self.state = ServerState.Command
             self.transport.write('OK'.encode())
+            self.user = get_user(user)
             return True, 'successfully authenticated'
 
         self.transport.write('NO'.encode())
@@ -84,7 +90,7 @@ class ServerProtocol(asyncio.Protocol):
 
     def process_command(self, data):
         msg = data.decode().strip()
-        pattern = r'\w+'
+        pattern = r'[!-~]+'
         command, *args = re.findall(pattern, msg)
         print('attempting to process command {} with args {}'.format(command, repr(args)))
 
@@ -130,8 +136,12 @@ class Server(object):
         self.server.close()
         return True, 'quitting...'
 
-    def say(self, *args):
-        msg = '\n' + ' '.join(args) + '\n'
+    def say(self, origin, *args):
+        msg = '\n'
+        msg += '{}: '.format(origin.user.name)
+        msg += ' '.join(args)
+        msg += '\n'
+
         for c in self.connections:
             c.transport.write(msg.encode())
 
@@ -149,3 +159,22 @@ class Server(object):
         except KeyboardInterrupt:
             print('Caught Ctrl-C, quitting')
             self.quit()
+
+    def stats(self, origin, *args):
+        user = origin.user
+        msg = '''
+        {username}
+                Strength:       {strength}
+                Dexterity:      {dexterity}
+                Intelligence:   {intelligence}
+                Health:         {health}
+
+'''.format(username=user.name, strength=user.strength, dexterity=user.dexterity,
+            intelligence=user.intelligence, health=user.health)
+
+        origin.transport.write(msg.encode())
+
+    def look(self, origin, *args):
+        user = origin.user
+        msg = user.current_room.description
+        

@@ -6,7 +6,7 @@ except ImportError:
     print('You must install the bcrypt package to continue. Try:\n\n\tpip install bcrypt')
 
 from .server import Server
-from .storage import store_user
+from .storage import store_user, get_user
 from ..common.utils import hijack_stdout
 
 def usage(*args):
@@ -29,7 +29,14 @@ def createuser(*args):
     salt = bcrypt.gensalt()
     passwd_hash = bcrypt.hashpw(getpass.getpass('password: ').encode(), salt)
     store_user(username, salt, passwd_hash)
-    print('Created user:\n\n\t{}:{}'.format(username, passwd_hash))
+    user = get_user(username)
+    print('''
+    Created user:
+        {}
+        S: {} D: {} I: {} H: {}
+'''.format(user.name, user.strength, user.dexterity,
+            user.intelligence, user.health))
+            
     return 0
 
 commandline_options = {

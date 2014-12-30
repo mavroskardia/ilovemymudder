@@ -2,26 +2,38 @@ import bcrypt
 
 from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, backref
 from sqlalchemy import create_engine
 
 from ..common import config
 
 Base = declarative_base()
 
+class Room(Base):
+    __tablename__ = 'rooms'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    description = Column(String(4000), nullable=False)
+    commands_file = Column(String(255))
+
 class User(Base):
-    __tablename__ = 'user'
+    __tablename__ = 'users'
+
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     salt = Column(String(255), nullable=False)
     pwhash = Column(String(255), nullable=False)
 
+    strength = Column(Integer, default=1)
+    dexterity = Column(Integer, default=1)
+    intelligence = Column(Integer, default=1)
+    health = Column(Integer, default=1)
 
-class UserState(Base):
-    __tablename__ = 'userstate'
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship(User)
+    xp = Column(Integer, default=0)
+    level = Column(Integer, default=1)
+
+    current_room_id = Column(Integer, ForeignKey('rooms.id'))
+    current_room = relationship(Room, backref=backref('users', order_by=id))
 
 
 def get_storage_session():
@@ -48,6 +60,15 @@ def is_user_match(username, passwd):
     passwd_hash = bcrypt.hashpw(passwd.encode(), user.salt)
 
     return passwd_hash == user.pwhash
+
+def get_user(username):
+    session = get_storage_session()
+    user = session.query(User).filter(User.name == username).first()
+
+    if not user:
+        return None
+
+    return user
 
 
 if __name__ == '__main__':
