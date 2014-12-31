@@ -1,8 +1,9 @@
 import bcrypt
 
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import Column, ForeignKey, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, backref
+from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy import create_engine
 
 from ..common import config
@@ -14,7 +15,9 @@ class Room(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(String(4000), nullable=False)
+    is_start = Column(Boolean)
     commands_file = Column(String(255))
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -36,7 +39,7 @@ class User(Base):
     current_room = relationship(Room, backref=backref('users', order_by=id))
 
 
-def get_storage_session():
+def get_session():
     engine = create_engine(config.database)
     Base.metadata.create_all(engine)
     Base.metadata.bind = engine
@@ -47,12 +50,21 @@ def get_storage_session():
 
 def store_user(username, salt, passwd_hash):
     new_user = User(name=username, salt=salt, pwhash=passwd_hash)
-    session = get_storage_session()
-    session.add(new_user)
-    session.commit()
+    session = get_session()
+    start = None
+    try:
+        start = session.query(Room).filter(Room.is_start).one()
+        new_user.current_room = start
+        session.add(new_user)
+        session.commit()
+        return True
+    except NoResultFound as e:
+        print('Unable to find a starting room to assign to user. Please run the "makerooms" server command first.')
+
+    return False
 
 def is_user_match(username, passwd):
-    session = get_storage_session()
+    session = get_session()
     user = session.query(User).filter(User.name == username).first()
     if not user:
         return False
@@ -62,7 +74,7 @@ def is_user_match(username, passwd):
     return passwd_hash == user.pwhash
 
 def get_user(username):
-    session = get_storage_session()
+    session = get_session()
     user = session.query(User).filter(User.name == username).first()
 
     if not user:
@@ -74,7 +86,7 @@ def get_user(username):
 if __name__ == '__main__':
     print('running sqlalchemy tests')
 
-    session = get_storage_session()
+    session = get_session()
 
     new_user = User(name='chryso', salt='hi', pwhash='there')
     session.add(new_user)

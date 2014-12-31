@@ -6,7 +6,7 @@ except ImportError:
     print('You must install the bcrypt package to continue. Try:\n\n\tpip install bcrypt')
 
 from .server import Server
-from .storage import store_user, get_user
+from . import storage
 from ..common.utils import hijack_stdout
 
 def usage(*args):
@@ -17,6 +17,7 @@ usage: {} [command] [options]
 
         runserver       Runs the game server forever
         createuser      Creates a new player for the game
+        makerooms       Builds the rooms into the database
 '''.format(sys.argv[0]))
 
 def runserver(*args):
@@ -28,20 +29,36 @@ def createuser(*args):
     username = input('username: ')
     salt = bcrypt.gensalt()
     passwd_hash = bcrypt.hashpw(getpass.getpass('password: ').encode(), salt)
-    store_user(username, salt, passwd_hash)
-    user = get_user(username)
+
+    if not storage.store_user(username, salt, passwd_hash):
+        print('\nFailed to store user. Please correct errors before trying again.')
+        return 1
+
+    user = storage.get_user(username)
+
     print('''
     Created user:
-        {}
+        {} ({} [{}])
         S: {} D: {} I: {} H: {}
-'''.format(user.name, user.strength, user.dexterity,
+'''.format(user.name, user.level, user.xp, user.strength, user.dexterity,
             user.intelligence, user.health))
-            
+
     return 0
+
+def makerooms():
+    print('Making rooms...', end='')
+    session = storage.get_session()
+    starting_room = storage.Room(name="Town Square", is_start=True,
+        description='This is the town\'s square. Nothing is going on.',
+        commands_file='story.town_center')
+    session.add(starting_room)
+    session.commit()
+    print('done!')
 
 commandline_options = {
     'createuser': createuser,
-    'runserver': runserver
+    'runserver': runserver,
+    'makerooms': makerooms
 }
 
 if __name__ == '__main__':

@@ -96,8 +96,6 @@ class Interpreter(object):
             'quit': lambda: self.send('disconnect'),
             'say': self.say,
             'help': self.help,
-            'stats': lambda: self.send('stats'),
-            'look': lambda: self.send('look'),
         }
 
     def start(self):
@@ -114,13 +112,18 @@ class Interpreter(object):
         self.protocol.transport.write(msg.encode())
 
     def run(self):
-        while self.running:
-            cmd = input('\t=> ')
-            if not cmd:
-                continue
-            cmd, *args = [c.strip() for c in cmd.split(' ') if c]
-            self.commands.get(cmd, lambda: self.help('{} is not valid. These are your commands:'.format(cmd)))(*args)
+        self.send('look')
 
+        while self.running:
+            cmdinp = input('\t=> ')
+            if not cmdinp:
+                continue
+            cmd, *args = [c.strip() for c in cmdinp.split(' ') if c]
+            self.commands.get(cmd, lambda: self.server_command(cmdinp))(*args)
+
+    def server_command(self, cmd, *args):
+        servercmd = cmd + ' '.join(args)
+        self.send(servercmd)
 
     def say(self, *args):
         msg = 'say ' + ' '.join(args)

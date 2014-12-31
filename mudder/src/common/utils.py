@@ -9,9 +9,8 @@ class HijackedStdOut(io.TextIOWrapper):
         if s == '\n':
             super().write(s)
             return
-            
-        now = datetime.datetime.now().strftime('%Y.%m.%d %H:%M:%S => ')
-        s = '{}{}'.format(now, s)
+        
+        s = '{:%Y.%m.%d %H:%M:%S} => {}'.format(datetime.datetime.now(), s)
         super().write(s)
         self.flush()
 

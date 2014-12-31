@@ -2,10 +2,11 @@ import pdb
 import re
 import sqlite3
 import asyncio
+import importlib
 
 from enum import Enum
 
-from .storage import is_user_match, get_user
+from . import storage
 from ..common import config
 
 class ServerState(Enum):
@@ -46,8 +47,8 @@ class ServerProtocol(asyncio.Protocol):
 
         success, msg = self.protocol_actions.get(self.state, self.invalid_state)(data)
         if not success:
-            print(msg)
-            self.transport.close()
+            print('Client sent invalid command ("{}")'.format(data.decode()))
+            self.write(msg)
 
     def connection_lost(self, exc):
         if exc:
@@ -55,15 +56,18 @@ class ServerProtocol(asyncio.Protocol):
 
         print('connection closed')
 
+    def write(self, msg):
+        self.transport.write(msg.encode())
+
     def handshake(self, data):
         msg = data.decode()
         print('received "%s" as handshake (expecting "%s")' % (msg, config.version))
         if msg == config.version:
-            self.transport.write(config.version.encode())
+            self.write(config.version)
             self.state = ServerState.Authentication
             return True, 'accepted handshake'
         else:
-            self.transport.write('NO\n'.encode())
+            self.write('NO\n')
 
         return False, 'handshake was not what we expected, closing'
 
@@ -81,11 +85,11 @@ class ServerProtocol(asyncio.Protocol):
 
         if self.auth_user(user, passwd):
             self.state = ServerState.Command
-            self.transport.write('OK'.encode())
-            self.user = get_user(user)
+            self.write('OK')
+            self.user = storage.get_user(user)
             return True, 'successfully authenticated'
 
-        self.transport.write('NO'.encode())
+        self.write('NO')
         return False, 'invalid user'
 
     def process_command(self, data):
@@ -94,7 +98,7 @@ class ServerProtocol(asyncio.Protocol):
         command, *args = re.findall(pattern, msg)
         print('attempting to process command {} with args {}'.format(command, repr(args)))
 
-        cmd = self.commands.get(command.lower(), self.invalid_command)
+        cmd = self.commands.get(command.lower(), lambda *args: self.server.room_command(self, command, *args))
         if not args: args = []
         success, msg = cmd(*args)
 
@@ -107,14 +111,14 @@ class ServerProtocol(asyncio.Protocol):
         return False, 'Failed to derive state "%s"' % self.state
 
     def invalid_command(self, *args):
-        return False, 'Invalid command'
+        return False, 'Unknown command'
 
     def auth_user(self, user, passwd):
-        return is_user_match(user, passwd)
+        return storage.is_user_match(user, passwd)
 
     def echo(self, *args):
         msg = ' '.join([c.strip() for c in args if c])
-        self.transport.write(msg.encode())
+        self.write(msg)
         return True, 'echoed "{}" to client'.format(msg)
 
     def close(self):
@@ -124,10 +128,10 @@ class ServerProtocol(asyncio.Protocol):
 class Server(object):
 
     def __init__(self):
-        '''Make database connections (via SQLAlchemy?)'''
         self.loop = None
         self.server = None
         self.connections = []
+        self.room_modules = {}
 
     def quit(self, *args):
         # TODO: notify all clients, save state, etc.
@@ -163,18 +167,45 @@ class Server(object):
     def stats(self, origin, *args):
         user = origin.user
         msg = '''
-        {username}
-                Strength:       {strength}
-                Dexterity:      {dexterity}
-                Intelligence:   {intelligence}
-                Health:         {health}
+        {0.name} Level {0.level} XP: {0.xp}
+            Health:         {0.health}
+            Strength:       {0.strength}
+            Dexterity:      {0.dexterity}
+            Intelligence:   {0.intelligence}
 
-'''.format(username=user.name, strength=user.strength, dexterity=user.dexterity,
-            intelligence=user.intelligence, health=user.health)
+
+'''.format(user)
 
         origin.transport.write(msg.encode())
+
+        return True, ''
 
     def look(self, origin, *args):
         user = origin.user
         msg = user.current_room.description
-        
+        origin.transport.write(msg.encode())
+        return True, ''
+
+    def room_command(self, origin, cmd, *args):
+        print('looking for commands in {}'.format(origin.user.current_room))
+        print('room has commands_file: {}'.format(origin.user.current_room.commands_file))
+
+        if not origin.user.current_room.commands_file:
+            return False, 'No room commands in this room'
+
+        room = origin.user.current_room
+
+        try:
+            self.room_modules[room.id] = importlib.import_module(room.commands_file, package='src.server')
+        except ImportError as e:
+            print('Failed to import room commands: {}'.format(e))
+            return False, 'Could not find room commands'
+
+        if not hasattr(self.room_modules[room.id], cmd):
+            print('Room module exists, but command "{}" does not.'.format(cmd))
+            return False, 'Could not find this particular command'
+
+        cmdexec = getattr(self.room_modules[room.id], cmd)
+        cmdexec(origin, *args)
+
+        return True, ''
