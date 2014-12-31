@@ -1,3 +1,4 @@
+import sys
 import time
 import asyncio
 import getpass
@@ -11,7 +12,6 @@ except ImportError:
     from asyncio.windows_utils import socketpair
 
 from ..common import config
-from .state import GameState
 
 
 class ClientState(Enum):
@@ -26,7 +26,7 @@ class ClientProtocol(asyncio.Protocol):
     def __init__(self, client, username, passwd, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.username = username
-        self.passwd = passwd  # should probably send over SSL if I keep going
+        self.passwd = passwd  # should probably send over SSL if I keep going after the challenge
         self.client = client
         self.state = ClientState.Initial
 
@@ -77,10 +77,7 @@ class ClientProtocol(asyncio.Protocol):
 
     def receive_command_result(self, data):
         msg = data.decode().strip()
-        if msg.startswith('GS'):
-            self.interpreter.set_game_state(msg[2:])
-        else:
-            print(msg)
+        print('\n\t'+msg)
 
     def unimplemented_action(self, data):
         print('client tried to execute an unimplemented state "{}"'.format(self.state))

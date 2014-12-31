@@ -3,17 +3,12 @@ import re
 import sqlite3
 import asyncio
 import importlib
-
-from enum import Enum
+import threading
+import time
 
 from . import storage
+from .enums import UserStatus, ServerState
 from ..common import config
-
-class ServerState(Enum):
-    Handshake = 1
-    Authentication = 2
-    Command = 3
-
 
 class ServerProtocol(asyncio.Protocol):
 
@@ -21,7 +16,8 @@ class ServerProtocol(asyncio.Protocol):
         super().__init__(*args, **kwargs)
         self.server = server
         self.state = ServerState.Handshake
-        self.user = 'unknown'
+        self.user = None
+        self.session = None
 
         self.protocol_actions = {
             ServerState.Handshake: self.handshake,
@@ -86,7 +82,7 @@ class ServerProtocol(asyncio.Protocol):
         if self.auth_user(user, passwd):
             self.state = ServerState.Command
             self.write('OK')
-            self.user = storage.get_user(user)
+            self.user, self.session = storage.get_user(user)
             return True, 'successfully authenticated'
 
         self.write('NO')
@@ -123,6 +119,20 @@ class ServerProtocol(asyncio.Protocol):
 
     def close(self):
         self.transport.close()
+
+    def set_status(self, status, value):
+        mask = 1 << status.value
+        self.user.status &= ~mask
+
+        if value:
+            self.user.status |= mask
+
+    def call_after(self, seconds, callback):
+        def f():
+            time.sleep(seconds)
+            callback()
+        t = threading.Thread(target=f)
+        t.start()
 
 
 class Server(object):
@@ -166,6 +176,7 @@ class Server(object):
 
     def stats(self, origin, *args):
         user = origin.user
+        status = 'You are {}.'.format(self.build_status_string(user.status))
         msg = '''
         {0.name} Level {0.level} XP: {0.xp}
             Health:         {0.health}
@@ -173,23 +184,25 @@ class Server(object):
             Dexterity:      {0.dexterity}
             Intelligence:   {0.intelligence}
 
+            Status: {1}
+'''
 
-'''.format(user)
-
-        origin.transport.write(msg.encode())
+        origin.transport.write(msg.format(user, status).encode())
 
         return True, ''
 
     def look(self, origin, *args):
         user = origin.user
-        msg = user.current_room.description
-        origin.transport.write(msg.encode())
+        dashes = '-' * len(user.current_room.name)
+        msg = '''
+        {0.name}
+        {1}
+        {0.description}
+'''
+        origin.transport.write(msg.format(user.current_room, dashes).encode())
         return True, ''
 
     def room_command(self, origin, cmd, *args):
-        print('looking for commands in {}'.format(origin.user.current_room))
-        print('room has commands_file: {}'.format(origin.user.current_room.commands_file))
-
         if not origin.user.current_room.commands_file:
             return False, 'No room commands in this room'
 
@@ -209,3 +222,11 @@ class Server(object):
         cmdexec(origin, *args)
 
         return True, ''
+
+    def build_status_string(self, status):
+        statuses = []
+        for s in UserStatus:
+            if status & s.value:
+                statuses.append(s.name)
+
+        return ', '.join(statuses)

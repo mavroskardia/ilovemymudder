@@ -1,12 +1,19 @@
 import sys
+import os
+import inspect
 import getpass
+import importlib
+
 try:
     import bcrypt
 except ImportError:
     print('You must install the bcrypt package to continue. Try:\n\n\tpip install bcrypt')
 
-from .server import Server
 from . import storage
+
+from .server import Server
+
+from ..common import config
 from ..common.utils import hijack_stdout
 
 def usage(*args):
@@ -34,25 +41,36 @@ def createuser(*args):
         print('\nFailed to store user. Please correct errors before trying again.')
         return 1
 
-    user = storage.get_user(username)
+    user, session = storage.get_user(username)
 
     print('''
     Created user:
-        {} ({} [{}])
-        S: {} D: {} I: {} H: {}
-'''.format(user.name, user.level, user.xp, user.strength, user.dexterity,
-            user.intelligence, user.health))
+        {0.name} ({0.level} [{0.xp}])
+        S: {0.strength} D: {0.dexterity} I: {0.intelligence} H: {0.health}
+'''.format(user))
 
     return 0
 
 def makerooms():
     print('Making rooms...', end='')
+
     session = storage.get_session()
-    starting_room = storage.Room(name="Town Square", is_start=True,
-        description='This is the town\'s square. Nothing is going on.',
-        commands_file='story.town_center')
-    session.add(starting_room)
+    storyfiles = ['src.story.'+f[:-3]
+                    for f in os.listdir(config.storydir)
+                    if not f.startswith('__') and f.endswith('.py')]
+
+    for storyfile in storyfiles:
+        print('loading story piece', storyfile)
+        storymodule = importlib.import_module(storyfile, package='src')
+        room = storage.Room()
+        room.name = storymodule.name
+        room.description = storymodule.description
+        room.is_start = storymodule.is_start
+        room.commands_file = storyfile
+        session.add(room)
+
     session.commit()
+
     print('done!')
 
 commandline_options = {

@@ -38,6 +38,8 @@ class User(Base):
     current_room_id = Column(Integer, ForeignKey('rooms.id'))
     current_room = relationship(Room, backref=backref('users', order_by=id))
 
+    status = Column(Integer, default=0) # bitmask of all possible statuses
+
 
 def get_session():
     engine = create_engine(config.database)
@@ -63,8 +65,8 @@ def store_user(username, salt, passwd_hash):
 
     return False
 
-def is_user_match(username, passwd):
-    session = get_session()
+def is_user_match(username, passwd, session=None):
+    session = session or get_session()
     user = session.query(User).filter(User.name == username).first()
     if not user:
         return False
@@ -73,14 +75,14 @@ def is_user_match(username, passwd):
 
     return passwd_hash == user.pwhash
 
-def get_user(username):
-    session = get_session()
+def get_user(username, session=None):
+    session = session or get_session()
     user = session.query(User).filter(User.name == username).first()
 
     if not user:
         return None
 
-    return user
+    return user, session
 
 
 if __name__ == '__main__':
