@@ -32,10 +32,11 @@ def runserver(*args):
     Server().run()
     return 0
 
-def createuser(*args):
-    username = input('username: ')
+def createuser(_username=None, _password=None, *args):
+    username = _username or input('username: ')
     salt = bcrypt.gensalt()
-    passwd_hash = bcrypt.hashpw(getpass.getpass('password: ').encode(), salt)
+    pw = _password or getpass.getpass('password: ')
+    passwd_hash = bcrypt.hashpw(pw.encode(), salt)
 
     if not storage.store_user(username, salt, passwd_hash):
         print('\nFailed to store user. Please correct errors before trying again.')
@@ -63,19 +64,23 @@ def makerooms():
         print('\t', storyfile)
         storymodule = importlib.import_module(storyfile, package='src')
         if not hasattr(storymodule, 'is_start'): storymodule.is_start = False
-        session.add(storage.Room(name=storymodule.name,
-                                 description=storymodule.description,
-                                 is_start=storymodule.is_start,
-                                 commands_file=storyfile))
+        session.add(storage.Room(is_start=storymodule.is_start, module=storyfile))
 
     session.commit()
 
     print('done!')
 
+def reset():
+    os.remove(config.database_file)
+    makerooms()
+    createuser(_username='chryso', _password='letmein')
+    runserver()
+
 commandline_options = {
     'createuser': createuser,
     'runserver': runserver,
-    'makerooms': makerooms
+    'makerooms': makerooms,
+    'reset': reset
 }
 
 if __name__ == '__main__':

@@ -92,6 +92,8 @@ class Interpreter(object):
             'serverquit': lambda: self.send('quit'),
             'quit': lambda: self.send('disconnect'),
             'say': self.say,
+            'n': lambda: self.send('go north'),
+            's': lambda: self.send('go south'),
             'help': self.help,
         }
 
@@ -115,11 +117,11 @@ class Interpreter(object):
             cmdinp = input('\t=> ')
             if not cmdinp:
                 continue
-            cmd, *args = [c.strip() for c in cmdinp.split(' ') if c]
-            self.commands.get(cmd, lambda: self.server_command(cmdinp))(*args)
+            cmdstr, *args = [c.strip() for c in cmdinp.split(' ') if c]
+            self.commands.get(cmdstr, lambda *args: self.server_command(cmdstr, *args))(*args)
 
     def server_command(self, cmd, *args):
-        servercmd = cmd + ' '.join(args)
+        servercmd = ' '.join((cmd, ' '.join(args)))
         self.send(servercmd)
 
     def say(self, *args):
@@ -133,22 +135,23 @@ class Interpreter(object):
         print(commands)
         print('\n\t\tThere may also be area-specific commands that you can find!\n')
 
+
 class Client(object):
 
     def run(self):
-        print('''
-      _____     __                                                ___    _
-      \_   \   / /  _____   _____    /\/\  _   _    /\/\  /\ /\  /   \__| | ___ _ __
-       / /\/  / /  / _ \ \ / / _ \  /    \| | | |  /    \/ / \ \/ /\ / _` |/ _ \ '__|
-    /\/ /_   / /__| (_) \ V /  __/ / /\/\ \ |_| | / /\/\ \ \_/ / /_// (_| |  __/ |
-    \____/   \____/\___/ \_/ \___| \/    \/\__, | \/    \/\___/___,' \__,_|\___|_|
-                                           |___/
-
-    Welcome! Please enter your username and password to begin.
-
-    (If you haven't created a username and password yet, use the
-    server command "createuser")
-''')
+#         print('''
+#       _____     __                                                ___    _
+#       \_   \   / /  _____   _____    /\/\  _   _    /\/\  /\ /\  /   \__| | ___ _ __
+#        / /\/  / /  / _ \ \ / / _ \  /    \| | | |  /    \/ / \ \/ /\ / _` |/ _ \ '__|
+#     /\/ /_   / /__| (_) \ V /  __/ / /\/\ \ |_| | / /\/\ \ \_/ / /_// (_| |  __/ |
+#     \____/   \____/\___/ \_/ \___| \/    \/\__, | \/    \/\___/___,' \__,_|\___|_|
+#                                            |___/
+#
+#     Welcome! Please enter your username and password to begin.
+#
+#     (If you haven't created a username and password yet, use the
+#     server command "createuser")
+# ''')
 
         self.main_loop(*self.get_userinfo())
 

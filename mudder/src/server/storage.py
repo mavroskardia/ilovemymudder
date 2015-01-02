@@ -1,6 +1,7 @@
+import pdb
 import bcrypt
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean
+from sqlalchemy import Table, Column, ForeignKey, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, backref
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
@@ -10,13 +11,12 @@ from ..common import config
 
 Base = declarative_base()
 
+
 class Room(Base):
     __tablename__ = 'rooms'
     id = Column(Integer, primary_key=True)
-    name = Column(String(255), nullable=False)
-    description = Column(String(4000), nullable=False)
     is_start = Column(Boolean)
-    commands_file = Column(String(255))
+    module = Column(String(255))
 
 
 class User(Base):
@@ -83,6 +83,13 @@ def get_user(username, session=None):
         return None
 
     return user, session
+
+def update_user_room(user, room_module, session=None):
+    session = session or get_session()
+    room = session.query(Room).filter(Room.module == room_module).first()
+    user.current_room = room
+    session.commit()
+    return room, session
 
 
 if __name__ == '__main__':
