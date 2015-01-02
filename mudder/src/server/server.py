@@ -6,9 +6,9 @@ import importlib
 import threading
 import time
 
-from . import storage
+from . import game, storage
 from .enums import UserStatus, ServerState
-from ..common import config
+from ..common import config, utils
 
 class ServerProtocol(asyncio.Protocol):
 
@@ -73,7 +73,8 @@ class ServerProtocol(asyncio.Protocol):
         pattern = r'^(\w+):(\w+)$'
         result = re.findall(pattern, msg)
         if not result:
-            return False, 'not in username:password format (got %s, but expected %s)' % (msg, pattern)
+            self.write('NO')            
+            return False, ''#'not in username:password format (got %s, but expected %s)' % (msg, pattern)
 
         user, passwd = result[0]
 
@@ -176,7 +177,7 @@ class Server(object):
 
     def stats(self, origin, *args):
         user = origin.user
-        status = 'You are {}.'.format(self.build_status_string(user.status))
+        status = 'You are {}.'.format(game.build_status_string(user.status))
         msg = '''
         {0.name} Level {0.level} XP: {0.xp}
             Health:         {0.health}
@@ -194,39 +195,40 @@ class Server(object):
     def look(self, origin, *args):
         user = origin.user
         dashes = '-' * len(user.current_room.name)
-        msg = '''
-        {0.name}
-        {1}
-        {0.description}
-'''
-        origin.transport.write(msg.format(user.current_room, dashes).encode())
+        room = self.cache_room_module(user.current_room)
+        exits = game.build_exits_string(room)
+        msg = '\n{0.name}\n\t{1}\n\t{0.description}\n\t{2}'
+        origin.transport.write(msg.format(user.current_room, dashes, exits).encode())
         return True, ''
 
     def room_command(self, origin, cmd, *args):
         if not origin.user.current_room.commands_file:
             return False, 'No room commands in this room'
 
-        room = origin.user.current_room
+        room_module = self.cache_room_module(origin.user.current_room)
 
-        try:
-            self.room_modules[room.id] = importlib.import_module(room.commands_file, package='src.server')
-        except ImportError as e:
-            print('Failed to import room commands: {}'.format(e))
-            return False, 'Could not find room commands'
+        if not room_module:
+            return False, 'Could not find room module'
 
-        if not hasattr(self.room_modules[room.id], cmd):
+        if not hasattr(room_module, cmd):
             print('Room module exists, but command "{}" does not.'.format(cmd))
             return False, 'Could not find this particular command'
 
-        cmdexec = getattr(self.room_modules[room.id], cmd)
+        cmdexec = getattr(room_module, cmd)
         cmdexec(origin, *args)
 
         return True, ''
 
-    def build_status_string(self, status):
-        statuses = []
-        for s in UserStatus:
-            if status & s.value:
-                statuses.append(s.name)
+    def cache_room_module(self, room):
+        assert room is not None
 
-        return ', '.join(statuses)
+        if room.id in self.room_modules:
+            return self.room_modules[room.id]
+
+        try:
+            self.room_modules[room.id] = importlib.import_module(room.commands_file, package='src')
+        except ImportError as e:
+            print('Failed to import room: {}'.format(e))
+            return None
+
+        return self.room_modules.get(room.id, None)

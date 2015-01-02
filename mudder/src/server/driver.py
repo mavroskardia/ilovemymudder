@@ -52,7 +52,7 @@ def createuser(*args):
     return 0
 
 def makerooms():
-    print('Making rooms...', end='')
+    print('Making rooms...')
 
     session = storage.get_session()
     storyfiles = ['src.story.'+f[:-3]
@@ -60,14 +60,13 @@ def makerooms():
                     if not f.startswith('__') and f.endswith('.py')]
 
     for storyfile in storyfiles:
-        print('loading story piece', storyfile)
+        print('\t', storyfile)
         storymodule = importlib.import_module(storyfile, package='src')
-        room = storage.Room()
-        room.name = storymodule.name
-        room.description = storymodule.description
-        room.is_start = storymodule.is_start
-        room.commands_file = storyfile
-        session.add(room)
+        if not hasattr(storymodule, 'is_start'): storymodule.is_start = False
+        session.add(storage.Room(name=storymodule.name,
+                                 description=storymodule.description,
+                                 is_start=storymodule.is_start,
+                                 commands_file=storyfile))
 
     session.commit()
 
