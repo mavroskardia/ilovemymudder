@@ -1,11 +1,10 @@
 import pdb
 import bcrypt
 
-from sqlalchemy import Table, Column, ForeignKey, Integer, String, Boolean
+from sqlalchemy import Table, Column, ForeignKey, Integer, String, Boolean, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, backref
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
-from sqlalchemy import create_engine
 
 from ..common import config
 
@@ -91,6 +90,14 @@ def update_user_room(user, room_module, session=None):
     session.commit()
     return room, session
 
+def store_room_from_module(module, session=None):
+    session = session or get_session()
+    room = session.query(Room).filter(Room.module == module.__name__).first()
+    if not room:
+        print('Creating new room for {}'.format(module.__name__))
+        room = Room(is_start=False, module=module.__name__)
+        session.commit()
+    return room, session
 
 if __name__ == '__main__':
     print('running sqlalchemy tests')

@@ -12,6 +12,7 @@ except ImportError:
     from asyncio.windows_utils import socketpair
 
 from ..common import config
+from ..common import utils
 
 
 class ClientState(Enum):
@@ -77,7 +78,7 @@ class ClientProtocol(asyncio.Protocol):
 
     def receive_command_result(self, data):
         msg = data.decode().strip()
-        print('\n\t'+msg)
+        print('\n\t'+msg+'\n\t=> ', end='')
 
     def unimplemented_action(self, data):
         print('client tried to execute an unimplemented state "{}"'.format(self.state))
@@ -94,6 +95,8 @@ class Interpreter(object):
             'say': self.say,
             'n': lambda: self.send('go north'),
             's': lambda: self.send('go south'),
+            'e': lambda: self.send('go east'),
+            'w': lambda: self.send('go west'),
             'help': self.help,
         }
 
@@ -160,7 +163,6 @@ class Client(object):
 
     def main_loop(self, username, passwd):
         self.loop = asyncio.get_event_loop()
-
         coro = self.loop.create_connection(lambda: ClientProtocol(self, username, passwd), config.host, config.port)
 
         self.loop.run_until_complete(coro)

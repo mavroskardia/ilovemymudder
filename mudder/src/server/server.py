@@ -98,12 +98,14 @@ class ServerProtocol(asyncio.Protocol):
 
     def process_command(self, data):
         msg = data.decode().strip()
-        pattern = '[!-~\t]+'
-        command, *args = re.findall(pattern, msg)
+        command, *args = re.findall('[!-~\t]+', msg)
         print('attempting to process command {} with args {}'.format(command, repr(args)))
 
         cmd = self.commands.get(command.lower(), lambda *args: self.server.room_command(self, command, *args))
-        success, msg = cmd(*args or [])
+        try:
+            success, msg = cmd(*args or [])
+        except:
+            success, msg = False, '{} failed to return the success/msg pair'.format(command)
 
         if not success:
             return False, msg
@@ -124,6 +126,7 @@ class ServerProtocol(asyncio.Protocol):
     def close(self):
         self.write('Killing server, please wait...')
         self.transport.close()
+        return False, 'dying'
 
     def set_status(self, status, value):
         mask = status.value
@@ -176,7 +179,7 @@ class Server(object):
             self.quit()
 
     def room_command(self, origin, cmd, *args):
-        if not origin.user.current_room.file:
+        if not origin.user.current_room.module:
             return False, 'No room commands in this room'
 
         room_module = self.cache_room_module(origin.user.current_room)
@@ -209,6 +212,7 @@ class Server(object):
             if db_room.module not in self.watchers:
                 watcher = utils.watch_and_reload(m)
                 self.watchers[db_room.module] = watcher
+            storage.store_room_from_module(m)
         except ImportError as e:
             print('Failed to import room: {}'.format(e))
             return None
@@ -245,10 +249,10 @@ class Server(object):
             Dexterity:      {0.dexterity}
             Intelligence:   {0.intelligence}
 
-            Status: {1} ({2})
+            Status: {1}
 '''
 
-        origin.transport.write(msg.format(user, status, repr(bin(user.status))).encode())
+        origin.transport.write(msg.format(user, status).encode())
 
         return True, ''
 

@@ -6,11 +6,12 @@ name = "Town Square"
 description = '''
         This is the center of the town. There is a pond that appears man-made that
         drains into a creek heading south towards an impenetrable forest that
-        you dare not enter.
+        you dare not enter. There is a shoddy looking arena nearby.
 '''
 exits = {
     'north': 'src.story.tavern',
     'south': 'src.story.forest',
+    'east': 'src.story.arena',
 }
 
 def swim(origin):

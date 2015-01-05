@@ -19,9 +19,21 @@ class HijackedStdOut(io.TextIOWrapper):
         super().write(s)
         self.flush()
 
+class HijackedStdIn(io.TextIOWrapper):
+    pass
+
+
+
+class HijackedStdInBuffer(io.BufferedRandom):
+    pass
+
 
 def hijack_stdout():
     sys.stdout = HijackedStdOut(buffer=sys.stdout.buffer)
+
+def hijack_stdin():
+    sys.stdin = HijackedStdIn(buffer=HijackedStdInBuffer())
+    return sys.stdin
 
 def clean():
     dirs_to_remove = []
