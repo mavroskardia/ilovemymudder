@@ -60,7 +60,11 @@ class ServerProtocol(asyncio.Protocol):
         print('connection closed')
 
     def write(self, msg):
-        self.transport.write(msg.encode())
+        try:
+            self.transport.write(msg.encode())
+        except Exception as e:
+            print(e)
+            pdb.set_trace()
 
     def handshake(self, data):
         msg = data.decode()
@@ -91,6 +95,7 @@ class ServerProtocol(asyncio.Protocol):
             self.state = ServerState.Command
             self.write('OK')
             self.user, self.session = storage.get_user(user)
+            self.check_user()
             return True, 'successfully authenticated'
 
         self.write('NO')
@@ -128,6 +133,18 @@ class ServerProtocol(asyncio.Protocol):
         self.transport.close()
         return False, 'dying'
 
+    def check_user(self):
+        if self.user.health <= 0:
+            self.write('You are dead. Resurrecting now...')            
+            self.user.strength = 1
+            self.user.dexterity = 1
+            self.user.intelligence = 1
+            self.user.health = 10
+            self.user.xp = 1
+            self.user.level = 1    
+            self.user.current_room = storage.get_starting_room(self.session)
+            self.session.commit()
+
     def set_status(self, status, value):
         mask = status.value
         self.user.status &= ~mask
@@ -135,8 +152,21 @@ class ServerProtocol(asyncio.Protocol):
         if value:
             self.user.status |= mask
 
+    def has_status(self, status):
+        return self.user.status & status.value
+
     def add_xp(self, reason, amount):
         self.server.add_xp(self, reason, amount)
+    
+    def add_hp(self, amount):
+        self.user.health += amount
+        self.session.commit()
+        gainorloss = 'gain' if amount >= 0 else 'lose'
+        self.write('You {} {} hp.\n'.format(gainorloss, abs(amount)))
+
+        if self.user.health <= 0:
+            self.write('\nYou died.\n\n')
+            self.close()
 
     def call_after(self, seconds, callback):
         def f():
@@ -192,7 +222,10 @@ class Server(object):
             return False, 'I don\'t know how to {}'.format(cmd)
 
         cmdexec = getattr(room_module, cmd)
-        cmdexec(origin, *args)
+        try:
+            cmdexec(origin, *args)
+        except Exception as e:
+            return False, e
 
         return True, ''
 
@@ -265,8 +298,8 @@ class Server(object):
         origin.transport.write(msg.format(room, dashes, exits).encode())
         return True, ''
 
-    def go(self, origin, *args):
-        rm = self.cache_room_module(origin.user.current_room)
+    def go(self, origin, *args):        
+        rm = self.cache_room_module(origin.user.current_room)        
         exits = list(rm.exits.keys())
         for e in exits:
             if not e in args:
@@ -278,9 +311,33 @@ class Server(object):
                                                         origin.session)
 
             print('{} moved to {}'.format(origin.user.name, newroom_md.name))
+
+            self.notify_users_in_room(origin, rm)
+
             return self.look(origin)
 
         return False, 'Cannot go that way.'
+
+    def notify_users_in_room(self, origin, old):
+        msg = '{} left.\n'.format(origin.user.name)
+        room = self.cache_room_module(origin.user.current_room)
+
+        for c in self.connections:
+            if c is origin: continue            
+            croom = self.cache_room_module(c.user.current_room)
+            if croom == old:
+                c.transport.write(msg.encode())
+
+        msg = '{} just entered the {}\n'.format(origin.user.name, room.name)
+
+        for c in self.connections:
+            if c is origin: continue
+            croom = self.cache_room_module(c.user.current_room)
+            if croom == room:
+                c.transport.write(msg.encode())
+
+        return True, 'sent %s to all connections' % msg
+
 
     def build_exits_string(self, room):
         exits = room.exits

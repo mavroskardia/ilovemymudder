@@ -29,7 +29,7 @@ class User(Base):
     strength = Column(Integer, default=1)
     dexterity = Column(Integer, default=1)
     intelligence = Column(Integer, default=1)
-    health = Column(Integer, default=1)
+    health = Column(Integer, default=10)
 
     xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
@@ -37,7 +37,7 @@ class User(Base):
     current_room_id = Column(Integer, ForeignKey('rooms.id'))
     current_room = relationship(Room, backref=backref('users', order_by=id))
 
-    status = Column(Integer, default=0) # bitmask of all possible statuses
+    status = Column(Integer, default=0) # bitmask of all possible statuses    
 
 
 def get_session():
@@ -82,6 +82,10 @@ def get_user(username, session=None):
         return None
 
     return user, session
+
+def get_starting_room(session=None):
+    session = session or get_session()
+    return session.query(Room).filter(Room.is_start).one()
 
 def update_user_room(user, room_module, session=None):
     session = session or get_session()
