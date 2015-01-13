@@ -20,6 +20,8 @@ virtualenv ve
 * Activate the virtualenv:
 ```
 source ve/bin/activate
+	or, in Windows:
+ve\Scripts\activate.bat
 ```
 * Install dependencies:
 ```
