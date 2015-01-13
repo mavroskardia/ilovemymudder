@@ -35,7 +35,9 @@ python -m src.server.driver makerooms
 python -m src.server.driver createuser
 ```
 * Run Server:
-```python -m src.server.driver runserver```
+```
+python -m src.server.driver runserver
+```
 * Run Client (in separate window, don't forget to activate the virtualenv here, too):
 ```
 python -m src.client.driver

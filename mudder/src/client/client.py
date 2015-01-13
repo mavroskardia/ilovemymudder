@@ -142,19 +142,17 @@ class Interpreter(object):
 class Client(object):
 
     def run(self):
-#         print('''
-#       _____     __                                                ___    _
-#       \_   \   / /  _____   _____    /\/\  _   _    /\/\  /\ /\  /   \__| | ___ _ __
-#        / /\/  / /  / _ \ \ / / _ \  /    \| | | |  /    \/ / \ \/ /\ / _` |/ _ \ '__|
-#     /\/ /_   / /__| (_) \ V /  __/ / /\/\ \ |_| | / /\/\ \ \_/ / /_// (_| |  __/ |
-#     \____/   \____/\___/ \_/ \___| \/    \/\__, | \/    \/\___/___,' \__,_|\___|_|
-#                                            |___/
-#
-#     Welcome! Please enter your username and password to begin.
-#
-#     (If you haven't created a username and password yet, use the
-#     server command "createuser")
-# ''')
+        print('''
+      _____     __                                                ___    _
+      \_   \   / /  _____   _____    /\/\  _   _    /\/\  /\ /\  /   \__| | ___ _ __
+       / /\/  / /  / _ \ \ / / _ \  /    \| | | |  /    \/ / \ \/ /\ / _` |/ _ \ '__|
+    /\/ /_   / /__| (_) \ V /  __/ / /\/\ \ |_| | / /\/\ \ \_/ / /_// (_| |  __/ |
+    \____/   \____/\___/ \_/ \___| \/    \/\__, | \/    \/\___/___,' \__,_|\___|_|
+                                           |___/
+
+    Welcome! Please enter your username and password to begin.
+
+''')
 
         self.main_loop(*self.get_userinfo())
 
