@@ -30,6 +30,7 @@ class User(Base):
     dexterity = Column(Integer, default=1)
     intelligence = Column(Integer, default=1)
     health = Column(Integer, default=10)
+    maxhealth = Column(Integer, default=10)
 
     xp = Column(Integer, default=0)
     level = Column(Integer, default=1)
@@ -37,7 +38,7 @@ class User(Base):
     current_room_id = Column(Integer, ForeignKey('rooms.id'))
     current_room = relationship(Room, backref=backref('users', order_by=id))
 
-    status = Column(Integer, default=0) # bitmask of all possible statuses    
+    status = Column(Integer, default=0) # bitmask of all possible statuses
 
 
 def get_session():

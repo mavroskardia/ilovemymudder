@@ -49,7 +49,7 @@ class ModuleWatcher(object):
 
     watched_files = []
 
-    def __init__(self, module, interval=5):
+    def __init__(self, module, interval=2):
         self.module = module
         self.interval = interval
         self.thread = threading.Thread(target=self.loop)

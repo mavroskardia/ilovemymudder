@@ -37,7 +37,9 @@ class ServerProtocol(asyncio.Protocol):
             'disconnect': self.close,
             'stats': lambda *args: self.server.stats(self, *args),
             'look': lambda: self.server.look(self),
+            'givexp': lambda *args: self.add_xp(args[0], int(args[1])),
             'go': lambda *args: self.server.go(self, *args),
+            'rest': self.rest,
         }
 
     def connection_made(self, transport):
@@ -46,7 +48,6 @@ class ServerProtocol(asyncio.Protocol):
         print('Accepted connection from {}'.format(transport.get_extra_info('peername')))
 
     def data_received(self, data):
-
         success, msg = self.protocol_actions.get(self.state, self.invalid_state)(data)
         if not success:
             print('Client sent invalid command ("{}")'.format(data.decode()))
@@ -60,6 +61,10 @@ class ServerProtocol(asyncio.Protocol):
         print('connection closed')
 
     def write(self, msg):
+        if not isinstance(msg, str):
+            print(msg)
+            pdb.set_trace()
+
         try:
             self.transport.write(msg.encode())
         except Exception as e:
@@ -135,13 +140,13 @@ class ServerProtocol(asyncio.Protocol):
 
     def check_user(self):
         if self.user.health <= 0:
-            self.write('You are dead. Resurrecting now...')            
+            self.write('You are dead. Resurrecting now...')
             self.user.strength = 1
             self.user.dexterity = 1
             self.user.intelligence = 1
             self.user.health = 10
             self.user.xp = 1
-            self.user.level = 1    
+            self.user.level = 1
             self.user.current_room = storage.get_starting_room(self.session)
             self.session.commit()
 
@@ -156,8 +161,11 @@ class ServerProtocol(asyncio.Protocol):
         return self.user.status & status.value
 
     def add_xp(self, reason, amount):
+        assert isinstance(reason, str), 'reason as string then amount as integer'
+        assert isinstance(amount, int), 'reason as string then amount as integer'
         self.server.add_xp(self, reason, amount)
-    
+        return True, ''
+
     def add_hp(self, amount):
         self.user.health += amount
         self.session.commit()
@@ -166,7 +174,14 @@ class ServerProtocol(asyncio.Protocol):
 
         if self.user.health <= 0:
             self.write('\nYou died.\n\n')
-            self.close()
+            time.sleep(2)
+            self.check_user()
+
+    def rest(self):
+        self.user.health = self.user.maxhealth
+        self.write('You rest up until you have full health.')
+        self.session.commit()
+        return True, ''
 
     def call_after(self, seconds, callback):
         def f():
@@ -258,8 +273,19 @@ class Server(object):
 
         self.xp_reasons.append(reason)
         origin.user.xp += amount
+        msg = 'You earned {} xp for {}.\n'.format(amount, reason)
+        level_up = False
+
+        if self.is_ready_for_level_up(origin.user):
+            self.level_up_user(origin)
+            msg += '\n\n\tYou level up!\n\n\tHere are your new stats:\n'
+            level_up = True
+
         origin.session.commit()
-        origin.write('You earned {} xp for {}.\n'.format(amount, reason))
+        origin.write(msg)
+
+        if level_up:
+            self.stats(origin)
 
     def say(self, origin, *args):
         msg = '\n'
@@ -285,7 +311,7 @@ class Server(object):
             Status: {1}
 '''
 
-        origin.transport.write(msg.format(user, status).encode())
+        origin.write(msg.format(user, status))
 
         return True, ''
 
@@ -294,12 +320,12 @@ class Server(object):
         room = self.cache_room_module(user.current_room)
         dashes = '-' * len(room.name)
         exits = self.build_exits_string(room)
-        msg = '\n{0.name}\n\t{1}\n\t{0.description}\n\t{2}'
-        origin.transport.write(msg.format(room, dashes, exits).encode())
+        msg = '\n\t{0.name}\n\t{1}\n\t{0.description}\n\t{2}'
+        origin.write(msg.format(room, dashes, exits))
         return True, ''
 
-    def go(self, origin, *args):        
-        rm = self.cache_room_module(origin.user.current_room)        
+    def go(self, origin, *args):
+        rm = self.cache_room_module(origin.user.current_room)
         exits = list(rm.exits.keys())
         for e in exits:
             if not e in args:
@@ -314,6 +340,9 @@ class Server(object):
 
             self.notify_users_in_room(origin, rm)
 
+            if hasattr(newroom_md, 'onenter'):
+                newroom_md.onenter(origin, rm.__name__)
+
             return self.look(origin)
 
         return False, 'Cannot go that way.'
@@ -323,7 +352,7 @@ class Server(object):
         room = self.cache_room_module(origin.user.current_room)
 
         for c in self.connections:
-            if c is origin: continue            
+            if c is origin: continue
             croom = self.cache_room_module(c.user.current_room)
             if croom == old:
                 c.transport.write(msg.encode())
@@ -350,7 +379,20 @@ class Server(object):
 
         for exit in exits:
             r = self.get_room_module_by_partial_name(exits[exit])
-            s = '\tTo the {} is the {}.'.format(exit, r.name)
+            s = '\t{} is the {}.'.format(exit.capitalize(), r.name)
             ret.append(s)
 
         return '\n' + '\n'.join(ret)
+
+    def is_ready_for_level_up(self, user):
+        return user.xp > 500
+
+    def level_up_user(self, origin):
+        u = origin.user
+        u.level += 1
+        u.xp = 0
+        u.strength += 1
+        u.dexterity += 1
+        u.intelligence += 1
+        u.maxhealth += 5
+        u.health = u.maxhealth

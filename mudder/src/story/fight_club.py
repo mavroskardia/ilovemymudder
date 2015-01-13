@@ -16,24 +16,40 @@ exits = {
 }
 
 
-def fight(origin):
+def fight(origin, *args):
 	msg = '''
 	A burly looking dude enters the ring from the other side.
-	
+
 	The match begins suddenly as he lunges for you!
 	'''
 
-	origin.write(msg)
-
 	fighting = True
 	choices = (True, False)
+
+	himhealth = 10
 
 	while fighting:
 		you = random.choice(choices)
 		him = random.choice(choices)
 
-		youdmg = random.randint(1,10)
-		himdmg = random.randint(1,10)
+		youdmg = random.randint(1,10) * origin.user.strength
+		himdmg = random.randint(1,5)
 
+		himhealth -= youdmg
 
+		msg += '''
+	He hits you for {}.
+	You hit him for {}.
+	He has {} health left.'''.format(himdmg, youdmg, himhealth)
 
+		if himhealth <= 0:
+			msg += '\n\n\tHe\'s dead.\n'
+			fighting = False
+			origin.write(msg)
+			origin.add_xp('beating him to a pulp', 470)
+		else:
+			origin.write(msg)
+
+		origin.add_hp(-himdmg)
+
+	return True, ''

@@ -8,12 +8,13 @@ description = '''
         that snakes its way through a dense forest that surrounds both the lake
         and village.
 
-        Even though it is midday, no one is in the town square.  You do, 
+        Even though it is midday, no one is in the town square.  You do,
         however, hear some commotion within the tavern nearby.'''
 
 exits = {
     'north': 'src.story.tavern',
     'south': 'src.story.forest',
-    'west': 'src.story.beach',    
+    'west': 'src.story.beach',
+    'east': 'src.story.undertown_entrance',
 }
 
